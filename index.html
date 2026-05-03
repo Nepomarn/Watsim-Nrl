@@ -2,76 +2,65 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oceania TV Mini App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Oceania TV</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        /* 2. Use Telegram CSS Variables for "Native" look */
-        body {
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            font-family: sans-serif;
-            margin: 0;
-            padding: 10px;
+        :root { 
+            /* 2. Link styles to Telegram Theme Colors */
+            --bg: var(--tg-theme-bg-color, #0f172a); 
+            --card: var(--tg-theme-secondary-bg-color, #1e293b); 
+            --accent: var(--tg-theme-button-color, #38bdf8); 
+            --text: var(--tg-theme-text-color, #f8fafc); 
         }
-        .card {
-            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 10px;
-            cursor: pointer;
-            position: relative;
-        }
-        .badge {
-            background: var(--tg-theme-button-color, #2481cc);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 10px;
-            position: absolute;
-            top: 5px;
-            right: 5px;
-        }
-        #player-container {
-            display: none;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: var(--tg-theme-bg-color);
-            padding-bottom: 10px;
-        }
-        iframe {
-            width: 100%;
-            height: 200px;
-            border: none;
-            border-radius: 8px;
-        }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
+        header { text-align: center; margin-bottom: 20px; }
+        
+        .region-info { font-size: 0.9rem; color: var(--accent); margin-bottom: 15px; font-weight: bold; }
+        
+        #player-container { display: none; width: 100%; max-width: 800px; margin: 0 auto 20px; background: #000; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        iframe { width: 100%; height: 250px; border: none; }
+        #p-title { padding: 12px; background: var(--card); font-weight: bold; text-align: center; font-size: 1rem; border-bottom: 1px solid #334155; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; max-width: 1000px; margin: 0 auto; }
+        .card { background: var(--card); padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; transition: 0.2s; border: 1px solid transparent; position: relative; color: var(--text); }
+        .card:hover { border-color: var(--accent); transform: translateY(-3px); }
+        
+        .card img { width: 60px; height: 60px; object-fit: contain; background: white; border-radius: 8px; padding: 5px; margin-bottom: 10px; }
+        .card p { margin: 0; font-size: 0.8rem; font-weight: 600; line-height: 1.2; }
+        
+        .badge { position: absolute; top: 8px; right: 8px; font-size: 0.6rem; background: var(--accent); color: var(--tg-theme-button-text-color, #000); padding: 2px 5px; border-radius: 4px; text-transform: uppercase; }
+        .loading { text-align: center; padding: 60px; color: var(--accent); font-style: italic; }
     </style>
 </head>
 <body>
 
+    <header>
+        <h1 style="margin: 0; font-size: 1.8rem;">Oceania TV</h1>
+        <p class="region-info" id="status-text">Connecting to Satellite...</p>
+    </header>
+
     <div id="player-container">
-        <h3 id="p-title">Watching:</h3>
-        <iframe id="main-ifr" allowfullscreen></iframe>
+        <div id="p-title">Select a Channel</div>
+        <iframe id="main-ifr" src="" allowfullscreen allow="encrypted-media"></iframe>
     </div>
 
-    <div id="status-text">Connecting to Telegram...</div>
-    <div id="loader">Loading channels...</div>
-    <div id="channel-grid"></div>
+    <div id="loader" class="loading">Scanning AU/NZ Streams...</div>
+    <div class="grid" id="channel-grid"></div>
 
     <script>
-        // Initialize Telegram WebApp
+        // 3. Initialize Telegram WebApp
         const tg = window.Telegram.WebApp;
-        tg.ready(); // Notify Telegram that the app is ready
-        tg.expand(); // Expand to full height
+        tg.ready();
+        tg.expand(); // Opens app to full height
 
-        const PROXY = "YOUR_PROXY_URL_HERE"; // Ensure your proxy is set
-        const API_URL = "YOUR_API_URL_HERE";
-        
-        const loader = document.getElementById('loader');
-        const statusText = document.getElementById('status-text');
+        const API_URL = 'https://api.cdnlivetv.tv/api/v1/channels/?user=cdnlivetv&plan=free';
+        const PROXY = 'https://corsproxy.io/?';
 
         async function fetchChannels() {
+            const loader = document.getElementById('loader');
+            const statusText = document.getElementById('status-text');
+            
             try {
                 const response = await fetch(PROXY + encodeURIComponent(API_URL));
                 if (!response.ok) throw new Error("CORS Proxy Failure");
@@ -84,13 +73,13 @@
                 });
 
                 loader.style.display = 'none';
-                statusText.innerText = `Online: ${oceaniaChannels.length} Channels found`;
+                statusText.innerText = `Online: ${oceaniaChannels.length} Channels in AU & NZ`;
                 
                 renderGrid(oceaniaChannels);
             } catch (err) {
-                loader.innerText = "Error loading channels.";
+                loader.innerText = "Error loading channels. Try refreshing.";
                 statusText.innerText = "Connection Failed";
-                tg.showAlert("Failed to fetch channels. Please check your connection.");
+                tg.showAlert("Failed to connect to the channel server.");
             }
         }
 
@@ -99,7 +88,7 @@
             grid.innerHTML = '';
 
             if (channels.length === 0) {
-                grid.innerHTML = '<p>No channels active for AU/NZ.</p>';
+                grid.innerHTML = '<p style="grid-column: 1/-1">No channels active for AU/NZ.</p>';
                 return;
             }
 
@@ -109,11 +98,20 @@
                 const card = document.createElement('div');
                 card.className = 'card';
 
-                card.innerHTML = `
-                    <span class="badge">${ch.code.toUpperCase()}</span>
-                    <img src="${(ch.image && ch.image.startsWith('http')) ? ch.image : 'https://via.placeholder.com/60?text=TV'}" width="60" loading="lazy">
-                    <p>${ch.name}</p>
-                `;
+                const badge = document.createElement('span');
+                badge.className = 'badge';
+                badge.textContent = ch.code;
+
+                const img = document.createElement('img');
+                img.src = (ch.image && ch.image.startsWith('http')) ? ch.image : "https://via.placeholder.com/60?text=TV";
+                img.loading = "lazy";
+
+                const name = document.createElement('p');
+                name.textContent = ch.name;
+
+                card.appendChild(badge);
+                card.appendChild(img);
+                card.appendChild(name);
 
                 card.onclick = () => {
                     const container = document.getElementById('player-container');
@@ -124,7 +122,7 @@
                     iframe.src = ch.url;
                     container.style.display = 'block';
                     
-                    // Show Telegram Back Button when watching
+                    // 4. Handle Telegram Back Button
                     tg.BackButton.show();
                     tg.BackButton.onClick(() => {
                         container.style.display = 'none';
@@ -132,8 +130,8 @@
                         tg.BackButton.hide();
                     });
 
-                    // Haptic feedback for the click
-                    tg.HapticFeedback.impactOccurred('light');
+                    // 5. Add Haptic Feedback
+                    tg.HapticFeedback.impactOccurred('medium');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 };
 
