@@ -1,24 +1,389 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>My Document</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>AU/NZ Live TV</title>
+    <link rel="icon" href="data:,">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { display: flex; justify-content: center; align-items: center; height: 100vh; }
-        #fullscreen-btn { padding: 10px; font-size: 16px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root { --bg: #0f172a; --card: #1e293b; --accent: #38bdf8; --text: #f8fafc; }
+        
+        html, body { 
+            width: 100%; 
+            height: 100%; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg); 
+            color: var(--text); 
+            overflow: hidden;
+        }
+        
+        body.fullscreen-active {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        header { 
+            text-align: center; 
+            padding: 15px;
+            flex-shrink: 0;
+            background: var(--bg);
+            border-bottom: 1px solid #1e293b;
+        }
+        
+        header h1 { 
+            font-size: 1.5rem; 
+            margin-bottom: 8px;
+        }
+        
+        .region-info { 
+            font-size: 0.85rem; 
+            color: var(--accent); 
+            font-weight: 600; 
+        }
+
+        #player-container { 
+            display: none; 
+            width: 100%; 
+            background: #000; 
+            flex-shrink: 0;
+            position: relative;
+            z-index: 100;
+        }
+        
+        #player-container.active {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #player-wrapper {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%;
+            background: #000;
+        }
+        
+        #player-wrapper iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        
+        #p-title { 
+            padding: 12px; 
+            background: #1a1a2e;
+            font-weight: 600; 
+            text-align: center; 
+            font-size: 0.95rem; 
+            border-bottom: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .fullscreen-toggle {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.8rem;
+            transition: 0.2s;
+        }
+        
+        .fullscreen-toggle:active {
+            opacity: 0.8;
+        }
+
+        .content-wrapper {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 15px;
+        }
+
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); 
+            gap: 12px;
+        }
+        
+        .card { 
+            background: var(--card); 
+            padding: 12px; 
+            border-radius: 10px; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: 0.2s; 
+            border: 2px solid transparent; 
+            position: relative;
+            -webkit-user-select: none;
+            user-select: none;
+            active: 0;
+        }
+        
+        .card:active { 
+            border-color: var(--accent); 
+            transform: scale(0.95);
+            background: #26334d;
+        }
+        
+        .card img { 
+            width: 50px; 
+            height: 50px; 
+            object-fit: contain; 
+            background: white; 
+            border-radius: 6px; 
+            padding: 4px; 
+            margin-bottom: 8px;
+        }
+        
+        .card p { 
+            margin: 0; 
+            font-size: 0.75rem; 
+            font-weight: 600; 
+            line-height: 1.2;
+            word-break: break-word;
+        }
+        
+        .badge { 
+            position: absolute; 
+            top: 6px; 
+            right: 6px; 
+            font-size: 0.6rem; 
+            background: var(--accent); 
+            color: #000; 
+            padding: 2px 4px; 
+            border-radius: 3px; 
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+        
+        .loading { 
+            text-align: center; 
+            padding: 40px 15px; 
+            color: var(--accent); 
+            font-style: italic;
+            font-size: 0.9rem;
+        }
+        
+        .close-player {
+            background: transparent;
+            border: none;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 4px 8px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        @media (max-height: 500px) {
+            #player-wrapper { padding-bottom: 45%; }
+        }
     </style>
+</head>
+<body>
+    <div id="app-container">
+        <header>
+            <h1>📺 Oceania TV</h1>
+            <p class="region-info" id="status-text">Fetching channels...</p>
+        </header>
+
+        <div id="player-container">
+            <div id="p-title">
+                <span id="channel-name">Select a Channel</span>
+                <button class="fullscreen-toggle" id="fs-btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+                <button class="close-player" onclick="closePlayer()">✕</button>
+            </div>
+            <div id="player-wrapper">
+                <iframe id="main-ifr" src="" allowfullscreen allow="encrypted-media; fullscreen"></iframe>
+            </div>
+        </div>
+
+        <div class="content-wrapper">
+            <div id="loader" class="loading">🛰️ Scanning Satellite...</div>
+            <div class="grid" id="channel-grid"></div>
+        </div>
+    </div>
+
     <script>
+        // Initialize Telegram Web App
+        if (window.Telegram?.WebApp) {
+            const tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+            tg.enableClosingConfirmation();
+        }
+
+        // API and Proxy config
+        const API_URL = 'https://api.cdnlivetv.tv/api/v1/channels/?user=cdnlivetv&plan=free';
+        const PROXY = 'https://corsproxy.io/?';
+        
+        let isFullscreen = false;
+
+        async function fetchChannels() {
+            const loader = document.getElementById('loader');
+            const statusText = document.getElementById('status-text');
+            
+            try {
+                const response = await fetch(PROXY + encodeURIComponent(API_URL));
+                if (!response.ok) throw new Error("CORS Proxy Failure");
+                
+                const data = await response.json();
+                
+                const oceaniaChannels = (data.channels || []).filter(ch => {
+                    const code = ch.code ? ch.code.toLowerCase() : '';
+                    return code === 'au' || code === 'nz';
+                });
+
+                loader.style.display = 'none';
+                statusText.innerText = `🟢 Online: ${oceaniaChannels.length} Channels in AU & NZ`;
+                
+                renderGrid(oceaniaChannels);
+            } catch (err) {
+                loader.innerText = "❌ Error loading channels. Try refreshing.";
+                statusText.innerText = "Connection Failed";
+                console.error("Fetch error:", err);
+            }
+        }
+
+        function renderGrid(channels) {
+            const grid = document.getElementById('channel-grid');
+            grid.innerHTML = '';
+
+            if (channels.length === 0) {
+                grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; padding: 20px;">No channels currently available for AU/NZ region.</p>';
+                return;
+            }
+
+            channels.forEach(ch => {
+                if (!ch.url || ch.url === "null") return;
+
+                const card = document.createElement('div');
+                card.className = 'card';
+
+                const badge = document.createElement('span');
+                badge.className = 'badge';
+                badge.textContent = ch.code;
+
+                const img = document.createElement('img');
+                img.src = (ch.image && ch.image.startsWith('http')) ? ch.image : "https://via.placeholder.com/60?text=TV";
+                img.loading = "lazy";
+
+                const name = document.createElement('p');
+                name.textContent = ch.name;
+
+                card.appendChild(badge);
+                card.appendChild(img);
+                card.appendChild(name);
+
+                card.addEventListener('click', () => playChannel(ch));
+                card.addEventListener('touchstart', () => card.style.opacity = '0.7');
+                card.addEventListener('touchend', () => card.style.opacity = '1');
+
+                grid.appendChild(card);
+            });
+        }
+
+        function playChannel(ch) {
+            const container = document.getElementById('player-container');
+            const iframe = document.getElementById('main-ifr');
+            const title = document.getElementById('channel-name');
+
+            title.textContent = `${ch.name} (${ch.code.toUpperCase()})`;
+            iframe.src = ch.url;
+            container.classList.add('active');
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            if (window.Telegram?.WebApp) {
+                window.Telegram.WebApp.HapticFeedback?.impactOccurred?.('light');
+            }
+        }
+
+        function closePlayer() {
+            const container = document.getElementById('player-container');
+            const iframe = document.getElementById('main-ifr');
+            container.classList.remove('active');
+            iframe.src = '';
+            isFullscreen = false;
+            document.body.classList.remove('fullscreen-active');
+        }
+
         function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
+            const container = document.getElementById('player-container');
+            const btn = document.getElementById('fs-btn');
+            
+            if (!isFullscreen) {
+                if (container.requestFullscreen) {
+                    container.requestFullscreen().catch(err => {
+                        console.log('Fullscreen request failed:', err);
+                        fallbackFullscreen(true);
+                    });
+                } else if (container.webkitRequestFullscreen) {
+                    container.webkitRequestFullscreen();
+                } else {
+                    fallbackFullscreen(true);
+                }
+                isFullscreen = true;
+                btn.textContent = '⛶ Exit';
             } else {
                 if (document.exitFullscreen) {
                     document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else {
+                    fallbackFullscreen(false);
                 }
+                isFullscreen = false;
+                btn.textContent = '⛶ Fullscreen';
             }
         }
+
+        function fallbackFullscreen(enable) {
+            const body = document.body;
+            const container = document.getElementById('player-container');
+            if (enable) {
+                body.classList.add('fullscreen-active');
+                document.getElementById('app-container').style.overflow = 'hidden';
+            } else {
+                body.classList.remove('fullscreen-active');
+                document.getElementById('app-container').style.overflow = 'auto';
+            }
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            const btn = document.getElementById('fs-btn');
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                isFullscreen = false;
+                btn.textContent = '⛶ Fullscreen';
+                document.body.classList.remove('fullscreen-active');
+            }
+        });
+
+        // Initialize
+        fetchChannels();
     </script>
-</head>
-<body>
-    <button id="fullscreen-btn" onclick="toggleFullscreen()">Toggle Fullscreen</button>
 </body>
 </html>
