@@ -2,42 +2,121 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Oceania TV Streaming App">
-    <title>Oceania TV Streaming App</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta property="og:title" content="Oceania TV">
+    <meta property="og:description" content="Stream AU/NZ TV channels">
+    <title>Oceania TV</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root { 
+            --bg: var(--tg-theme-bg-color, #0f172a); 
+            --card: var(--tg-theme-secondary-bg-color, #1e293b); 
+            --accent: var(--tg-theme-button-color, #38bdf8); 
+            --text: var(--tg-theme-text-color, #f8fafc); 
+        }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; }
+        header { text-align: center; margin-bottom: 20px; }
+        .region-info { font-size: 0.9rem; color: var(--accent); margin-bottom: 15px; font-weight: bold; }
+        #player-container { display: none; width: 100%; max-width: 800px; margin: 0 auto 20px; background: #000; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        iframe { width: 100%; height: 250px; border: none; }
+        #p-title { padding: 12px; background: var(--card); font-weight: bold; text-align: center; font-size: 1rem; border-bottom: 1px solid #334155; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; max-width: 1000px; margin: 0 auto; }
+        .card { background: var(--card); padding: 15px; border-radius: 12px; text-align: center; cursor: pointer; transition: 0.2s; border: 1px solid transparent; position: relative; color: var(--text); }
+        .card:hover { border-color: var(--accent); transform: translateY(-3px); }
+        .card img { width: 60px; height: 60px; object-fit: contain; background: white; border-radius: 8px; padding: 5px; margin-bottom: 10px; }
+        .card p { margin: 0; font-size: 0.8rem; font-weight: 600; line-height: 1.2; }
+        .badge { position: absolute; top: 8px; right: 8px; font-size: 0.6rem; background: var(--accent); color: var(--tg-theme-button-text-color, #000); padding: 2px 5px; border-radius: 4px; text-transform: uppercase; }
+        .loading { text-align: center; padding: 60px; color: var(--accent); font-style: italic; }
+    </style>
 </head>
 <body>
     <header>
-        <h1>Oceania TV Streaming App</h1>
-        <button id="backButton">Go Back</button>
+        <h1 style="margin: 0; font-size: 1.8rem;">Oceania TV</h1>
+        <p class="region-info" id="status-text">Connecting to Satellite...</p>
     </header>
-    <main>
-        <div id="errorLog" style="display:none;"></div>
-        <div id="streamContainer">
-            <!-- Stream content will be dynamically loaded here -->
-        </div>
-    </main>
+    <div id="player-container">
+        <div id="p-title">Select a Channel</div>
+        <iframe id="main-ifr" src="" allowfullscreen allow="encrypted-media"></iframe>
+    </div>
+    <div id="loader" class="loading">Scanning AU/NZ Streams...</div>
+    <div class="grid" id="channel-grid"></div>
     <script>
-        // Back Button Handler
-        document.getElementById('backButton').addEventListener('click', function() {
-            window.history.back();
-        });
-
-        // Error Logging
-        function logError(error) {
-            const errorLog = document.getElementById('errorLog');
-            errorLog.innerHTML += `<p>${error}</p>`;
-            errorLog.style.display = 'block';
+        // Initialize Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        const API_URL = 'https://api.cdnlivetv.tv/api/v1/channels/?user=cdnlivetv&plan=free';
+        const PROXY = 'https://corsproxy.io/?';
+        let backButtonRegistered = false;
+        async function fetchChannels() {
+            const loader = document.getElementById('loader');
+            const statusText = document.getElementById('status-text');
+            try {
+                const response = await fetch(PROXY + encodeURIComponent(API_URL));
+                if (!response.ok) throw new Error("CORS Proxy Failure");
+                const data = await response.json();
+                const oceaniaChannels = (data.channels || []).filter(ch => {
+                    const code = ch.code ? ch.code.toLowerCase() : '';
+                    return code === 'au' || code === 'nz';
+                });
+                loader.style.display = 'none';
+                statusText.innerText = `Online: ${oceaniaChannels.length} Channels in AU & NZ`;
+                renderGrid(oceaniaChannels);
+            } catch (err) {
+                console.error("Channel fetch error:", err);
+                loader.innerText = "Error loading channels. Try refreshing.";
+                statusText.innerText = "Connection Failed";
+                tg.showAlert("Failed to connect to the channel server.");
+            }
         }
-
-        // Example of null check before using a variable
-        let streamData = null; // Assume this gets populated later
-        if (streamData) {
-            // Process stream data
-        } else {
-            logError('Stream data is null');
+        function registerBackButton() {
+            if (backButtonRegistered) return;
+            backButtonRegistered = true;
+            tg.BackButton.show();
+            tg.BackButton.onClick(() => {
+                document.getElementById('player-container').style.display = 'none';
+                document.getElementById('main-ifr').src = '';
+                tg.BackButton.hide();
+                backButtonRegistered = false;
+            });
         }
+        function renderGrid(channels) {
+            const grid = document.getElementById('channel-grid');
+            grid.innerHTML = '';
+            if (channels.length === 0) {
+                grid.innerHTML = '<p style="grid-column: 1/-1">No channels active for AU/NZ.</p>';
+                return;
+            }
+            channels.forEach(ch => {
+                if (!ch.url || ch.url === "null") return;
+                const card = document.createElement('div');
+                card.className = 'card';
+                const badge = document.createElement('span');
+                badge.className = 'badge';
+                badge.textContent = ch.code;
+                const img = document.createElement('img');
+                img.src = (ch.image && ch.image.startsWith('http')) ? ch.image : "https://via.placeholder.com/60?text=TV";
+                img.loading = "lazy";
+                const name = document.createElement('p');
+                name.textContent = ch.name || "Unknown Channel";
+                card.appendChild(badge);
+                card.appendChild(img);
+                card.appendChild(name);
+                card.onclick = () => {
+                    const container = document.getElementById('player-container');
+                    const iframe = document.getElementById('main-ifr');
+                    const title = document.getElementById('p-title');
+                    title.textContent = `Watching: ${ch.name || 'Channel'}`;
+                    iframe.src = ch.url;
+                    container.style.display = 'block';
+                    registerBackButton();
+                    tg.HapticFeedback.impactOccurred('medium');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                };
+                grid.appendChild(card);
+            });
+        }
+        fetchChannels();
     </script>
 </body>
-</html>
+</html>\n
